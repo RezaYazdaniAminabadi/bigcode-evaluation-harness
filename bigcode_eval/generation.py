@@ -37,7 +37,7 @@ class TooLongFunctionCriteria(StoppingCriteria):
         return input_ids.shape[1] > int(self.input_length * self.multiplier)
         
 
-def parallel_generations(task, dataset, accelerator, model, tokenizer, n_tasks, args):
+def parallel_generations(task, dataset, accelerator, model, tokenizer, n_tasks, args, enable_ds_inference=False, tp_size=1):
     if args.load_generations_path:
         # load generated code
         with open(args.load_generations_path) as fp:
@@ -113,16 +113,17 @@ def parallel_generations(task, dataset, accelerator, model, tokenizer, n_tasks, 
 
     is_loaded_in_8bit = getattr(model, "is_loaded_in_8bit", False)
     is_loaded_in_4bit = getattr(model, "is_loaded_in_4bit", False)
-    if args.max_memory_per_gpu is not None:
-        # The model is already sharded across multiple GPUs
-        ds_loader = accelerator.prepare(ds_loader)
-    elif not is_loaded_in_8bit and not is_loaded_in_4bit:
-        # we only wrap data loader to avoid extra memory occupation
-        model = model.to(accelerator.device)
-        ds_loader = accelerator.prepare(ds_loader)
-    else:
-        # model.to() is not supported for 8bit and 4bit models
-        model, ds_loader = accelerator.prepare(model, ds_loader)
+    if not enable_ds_inference:
+        if args.max_memory_per_gpu is not None:
+            # The model is already sharded across multiple GPUs
+            ds_loader = accelerator.prepare(ds_loader)
+        elif not is_loaded_in_8bit and not is_loaded_in_4bit:
+            # we only wrap data loader to avoid extra memory occupation
+            model = model.to(accelerator.device)
+            ds_loader = accelerator.prepare(ds_loader)
+        else:
+            # model.to() is not supported for 8bit and 4bit models
+            model, ds_loader = accelerator.prepare(model, ds_loader)
 
     generations = complete_code(
         task,
@@ -137,6 +138,8 @@ def parallel_generations(task, dataset, accelerator, model, tokenizer, n_tasks, 
         instruction_tokens=instruction_tokens,
         postprocess=args.postprocess,
         is_wrapped=is_loaded_in_8bit or is_loaded_in_4bit,
+        enable_ds_inference=enable_ds_inference,
+        tp_size=tp_size,
         **gen_kwargs,
     )
     return generations

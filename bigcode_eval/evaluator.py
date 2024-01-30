@@ -38,7 +38,7 @@ class Evaluator:
         # code evaluation permission
         self.allow_code_execution = args.allow_code_execution
 
-    def generate_text(self, task_name):
+    def generate_text(self, task_name, enable_ds_inference=False, tp_size=1):
         task = tasks.get_task(task_name, self.args)
         dataset = task.get_dataset()
         # if args.limit is None, use all samples
@@ -60,6 +60,8 @@ class Evaluator:
             self.tokenizer,
             n_tasks=n_tasks,
             args=self.args,
+            enable_ds_inference=enable_ds_inference,
+            tp_size=tp_size,
         )
         if len(generations[0]) > self.args.n_samples:
             generations = [l[: self.args.n_samples] for l in generations]
@@ -68,12 +70,12 @@ class Evaluator:
             )
         return generations, references
 
-    def evaluate(self, task_name):
+    def evaluate(self, task_name, enable_ds_inference, tp_size=1):
         task = tasks.get_task(task_name, self.args)
         if task.requires_execution and not self.allow_code_execution:
             raise ValueError(_WARNING)
 
-        generations, references = self.generate_text(task_name)
+        generations, references = self.generate_text(task_name, enable_ds_inference, tp_size)
 
         if self.accelerator.is_main_process:
             if not self.args.load_generations_path:

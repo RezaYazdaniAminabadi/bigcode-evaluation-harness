@@ -231,6 +231,8 @@ def complete_code(
     instruction_tokens=None,
     postprocess=True,
     is_wrapped=False,
+    enable_ds_inference=False,
+    tp_size=1,
     **gen_kwargs,
 ):
     """Generate multiple codes for each task in the dataset using multiple GPUs with accelerate.
@@ -243,7 +245,7 @@ def complete_code(
     for step, batch in tqdm(
         enumerate(dataloader),
         total=math.ceil(
-            n_tasks * dataloader.dataset.n_copies / accelerator.num_processes
+            n_tasks * dataloader.dataset.n_copies / (1 if tp_size > 1 else accelerator.num_processes)
         ),
     ):
         with torch.no_grad():
@@ -256,10 +258,13 @@ def complete_code(
             if hasattr(task, "max_length_multiplier") and task.max_length_multiplier:
                 idx = 1 if task.stop_words else 0
                 gen_kwargs["stopping_criteria"][idx].input_length = batch["input_len"].max().item()                
-            
+            gen_kwargs['synced_gpus'] = True
             inputs = batch["ids"][:, : batch["input_len"]]
+            
+            inputs = inputs.to(torch.cuda.current_device())
+            
             if "ids_encoder" in batch:
-                if is_wrapped:
+                if (not enable_ds_inference) and is_wrapped:
                     generated_tokens = accelerator.unwrap_model(model).generate(
                         decoder_input_ids=inputs,
                         input_ids=batch["ids_encoder"][:, : batch["input_len_encoder"]],
@@ -278,7 +283,7 @@ def complete_code(
                         **gen_kwargs,
                     )
             else:
-                if is_wrapped:
+                if (not enable_ds_inference) and is_wrapped:
                     # 8bit and 4bit models are wrapped in accelerator
                     generated_tokens = accelerator.unwrap_model(model).generate(
                         input_ids=inputs,
@@ -293,19 +298,18 @@ def complete_code(
                     )
             # each task is generated batch_size times
             generated_tasks = batch["task_id"].repeat(batch_size)
-            generated_tokens = accelerator.pad_across_processes(
-                generated_tokens, dim=1, pad_index=tokenizer.pad_token_id
-            )
-
-            generated_tokens, generated_tasks = accelerator.gather(
-                (generated_tokens, generated_tasks)
-            )
+            if (not enable_ds_inference):
+                generated_tokens = accelerator.pad_across_processes(
+                    generated_tokens, dim=1, pad_index=tokenizer.pad_token_id
+                )
+                generated_tokens, generated_tasks = accelerator.gather(
+                    (generated_tokens, generated_tasks)
+                )
             generated_tokens = generated_tokens.cpu().numpy()
             generated_tasks = generated_tasks.cpu().numpy()
 
             for sample, generated_tokens in zip(generated_tasks, generated_tokens):
                 gen_token_dict[sample].append(generated_tokens)
-
     code_gens = [[] for _ in range(n_tasks)]
     for sample, generated_tokens in gen_token_dict.items():
         for s in generated_tokens:
