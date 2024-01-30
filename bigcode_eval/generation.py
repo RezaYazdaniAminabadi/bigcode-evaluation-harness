@@ -37,7 +37,7 @@ class TooLongFunctionCriteria(StoppingCriteria):
         return input_ids.shape[1] > int(self.input_length * self.multiplier)
         
 
-def parallel_generations(task, dataset, accelerator, model, tokenizer, n_tasks, args, enable_ds_inference=False, tp_size=1):
+def parallel_generations(task, dataset, accelerator, model, tokenizer, n_tasks, args):
     if args.load_generations_path:
         # load generated code
         with open(args.load_generations_path) as fp:
@@ -113,7 +113,7 @@ def parallel_generations(task, dataset, accelerator, model, tokenizer, n_tasks, 
 
     is_loaded_in_8bit = getattr(model, "is_loaded_in_8bit", False)
     is_loaded_in_4bit = getattr(model, "is_loaded_in_4bit", False)
-    if not enable_ds_inference:
+    if not args.enable_ds_inference:
         if args.max_memory_per_gpu is not None:
             # The model is already sharded across multiple GPUs
             ds_loader = accelerator.prepare(ds_loader)
@@ -138,8 +138,8 @@ def parallel_generations(task, dataset, accelerator, model, tokenizer, n_tasks, 
         instruction_tokens=instruction_tokens,
         postprocess=args.postprocess,
         is_wrapped=is_loaded_in_8bit or is_loaded_in_4bit,
-        enable_ds_inference=enable_ds_inference,
-        tp_size=tp_size,
+        enable_ds_inference=args.enable_ds_inference,
+        tp_size=args.tensor_parallel_size,
         **gen_kwargs,
     )
     return generations

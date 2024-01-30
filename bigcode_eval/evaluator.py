@@ -38,7 +38,7 @@ class Evaluator:
         # code evaluation permission
         self.allow_code_execution = args.allow_code_execution
 
-    def generate_text(self, task_name, enable_ds_inference=False, tp_size=1):
+    def generate_text(self, task_name):
         task = tasks.get_task(task_name, self.args)
         dataset = task.get_dataset()
         # if args.limit is None, use all samples
@@ -59,9 +59,7 @@ class Evaluator:
             self.model,
             self.tokenizer,
             n_tasks=n_tasks,
-            args=self.args,
-            enable_ds_inference=enable_ds_inference,
-            tp_size=tp_size,
+            args=self.args
         )
         if len(generations[0]) > self.args.n_samples:
             generations = [l[: self.args.n_samples] for l in generations]
