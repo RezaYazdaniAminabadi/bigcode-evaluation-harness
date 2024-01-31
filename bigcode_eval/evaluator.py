@@ -68,12 +68,12 @@ class Evaluator:
             )
         return generations, references
 
-    def evaluate(self, task_name, enable_ds_inference, tp_size=1):
+    def evaluate(self, task_name):
         task = tasks.get_task(task_name, self.args)
         if task.requires_execution and not self.allow_code_execution:
             raise ValueError(_WARNING)
 
-        generations, references = self.generate_text(task_name, enable_ds_inference, tp_size)
+        generations, references = self.generate_text(task_name)
 
         if self.accelerator.is_main_process:
             if not self.args.load_generations_path:
