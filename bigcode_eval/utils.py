@@ -270,7 +270,8 @@ def complete_code(
                 gen_kwargs["stopping_criteria"][idx].input_length = (
                     batch["input_len"].max().item()
                 )             
-            gen_kwargs['synced_gpus'] = True
+            if tp_size > 1:
+                gen_kwargs['synced_gpus'] = True
             
             inputs = batch["ids"][:, : batch["input_len"]] if tokenizer.padding_side == "right" else batch["ids"]
             inputs = inputs.to(torch.cuda.current_device())
